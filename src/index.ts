@@ -1,2 +1,5 @@
-export const one = 1
-export const two = 2
+import { Minesweeper } from "./minesweeper/minesweeper";
+
+const game = Minesweeper.createGame(2, 3);
+game.play();
+console.log("done");
