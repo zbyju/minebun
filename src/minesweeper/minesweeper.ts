@@ -1,5 +1,5 @@
 import { Action, ActionType } from "./action";
-import { PlayableTile, TileReal, TileUser, isPlayableTile } from "./tile";
+import { Tile, TileReal, TileUser } from "./tile";
 
 export enum Evaluation {
   Continue = 0,
@@ -7,44 +7,40 @@ export enum Evaluation {
   Lose = 2,
 }
 
-type GridReal = TileReal[][];
-type GridUser = TileUser[][];
-
 export class Minesweeper {
   private size: number;
   private numberOfMines: number;
-  private gridReal: GridReal;
-  private gridUser: GridUser;
+  private grid: Tile[][];
 
   constructor(size: number, numberOfMines: number) {
     this.size = size;
     this.numberOfMines = numberOfMines;
-    this.gridReal = Minesweeper.createGridReal(size, numberOfMines);
-    this.gridUser = Minesweeper.createGridUser(size);
+    this.grid = Minesweeper.createGrid(size, numberOfMines);
   }
 
   get gridSize(): number {
     return this.size;
   }
 
-  atReal(x: number, y: number): TileReal {
-    return this.gridReal[y][x];
-  }
-
-  atUser(x: number, y: number): TileUser {
-    return this.gridUser[y][x];
+  at(x: number, y: number): Tile | undefined {
+    if (x < 0 || x >= this.size || y < 0 || y >= this.size) return undefined;
+    return this.grid[y][x];
   }
 
   set(x: number, y: number, value: TileUser): void {
-    this.gridUser[y][x] = value;
+    const tile = this.at(x, y);
+    if (tile === undefined) {
+      return;
+    }
+    tile.set(value);
   }
 
   actions(): Action[] {
-    const positions = this.gridUser.flatMap((row, y) =>
-      row.map((tile, x) => [x, y, tile]),
+    const positions = this.grid.flatMap((row, y) =>
+      row.map((tile, x) => [x, y, tile] as const),
     );
     const actions = positions
-      .filter(([_, __, tile]) => tile === TileUser.Uncovered)
+      .filter(([_, __, tile]) => tile.user === TileUser.Uncovered)
       .flatMap(([x, y, _]) => [
         { x: x, y: y, type: ActionType.Uncover },
         { x: x, y: y, type: ActionType.Flag },
@@ -52,54 +48,43 @@ export class Minesweeper {
     return actions;
   }
 
-  private makeActionFlag(
-    x: number,
-    y: number,
-    tileUser: PlayableTile,
-    _tileReal: TileReal,
-  ): boolean {
-    if (tileUser === TileUser.Uncovered) {
+  private makeActionFlag(x: number, y: number, tile: Tile): boolean {
+    if (tile.user === TileUser.Covered) {
       this.set(x, y, TileUser.Flagged);
-    } else if (tileUser === TileUser.Flagged) {
-      this.set(x, y, TileUser.Uncovered);
-    }
-    return true;
-  }
-
-  private makeActionUncover(
-    x: number,
-    y: number,
-    _tileUser: PlayableTile,
-    tileReal: TileReal,
-  ): boolean {
-    if (tileReal === TileReal.Mine) {
-      this.set(x, y, TileUser.Exploded);
-    } else if (tileReal === TileReal.Empty) {
+    } else if (tile.user === TileUser.Flagged) {
       this.set(x, y, TileUser.Covered);
     }
     return true;
   }
 
-  makeAction(action: Action): boolean {
-    const tileUser = this.atUser(action.x, action.y);
-    if (tileUser === undefined) return false;
-
-    // Tile must be uncovered or flagged
-    if (!isPlayableTile(tileUser)) return false;
-
-    const tileReal = this.atReal(action.x, action.y);
-    if (tileReal === undefined) return false;
-
-    if (action.type === ActionType.Flag) {
-      return this.makeActionFlag(action.x, action.y, tileUser, tileReal);
+  private makeActionUncover(x: number, y: number, tile: Tile): boolean {
+    if (tile.real === TileReal.Mine) {
+      this.set(x, y, TileUser.Exploded);
+    } else if (tile.real === TileReal.Empty) {
+      this.set(x, y, TileUser.Uncovered);
     }
-
-    return this.makeActionUncover(action.x, action.y, tileUser, tileReal);
+    return true;
   }
 
-  toStringGrid<T>(
-    grid: T[][],
-    tileToString: (x: T) => string,
+  makeAction(action: Action): boolean {
+    const tile = this.at(action.x, action.y);
+    if (tile === undefined) return false;
+
+    // Tile must be uncovered or flagged
+    if (!tile.isPlayable()) {
+      return false;
+    }
+
+    if (action.type === ActionType.Flag) {
+      return this.makeActionFlag(action.x, action.y, tile);
+    }
+
+    return this.makeActionUncover(action.x, action.y, tile);
+  }
+
+  toStringGrid(
+    grid: Tile[][],
+    tileToString: (x: Tile) => string,
     title: string = "",
   ): string {
     let str = "  ";
@@ -108,11 +93,11 @@ export class Minesweeper {
     const size = grid.length;
     // Print x coords
     for (let c = 0; c < size; c++) {
-      str += c;
+      str += c + " ";
     }
     // Print top border
     str += "\n +";
-    for (let c = 0; c < size; c++) {
+    for (let c = 0; c < size * 2; c++) {
       str += "-";
     }
     str += "+\n";
@@ -128,36 +113,26 @@ export class Minesweeper {
     }
     // Print top border
     str += " +";
-    for (let c = 0; c < size; c++) {
+    for (let c = 0; c < size * 2; c++) {
       str += "-";
     }
     str += "+\n  ";
     // Print x coords
     for (let c = 0; c < size; c++) {
-      str += c;
+      str += c + " ";
     }
     str += "\n";
     return str;
   }
 
   toStringUser(): string {
-    const tileToString = (tile: TileUser) =>
-      tile === TileUser.Covered
-        ? "#"
-        : tile === TileUser.Flagged
-          ? "F"
-          : tile === TileUser.Uncovered
-            ? " "
-            : tile === TileUser.Exploded
-              ? "X"
-              : "?";
-    return this.toStringGrid(this.gridUser, tileToString);
+    const tileToString = (tile: Tile) => tile.toString();
+    return this.toStringGrid(this.grid, tileToString);
   }
 
   toStringReal(): string {
-    const tileToString = (tile: TileReal) =>
-      tile === TileReal.Mine ? "X" : "o";
-    return this.toStringGrid(this.gridReal, tileToString);
+    const tileToString = (tile: Tile) => tile.toStringReal();
+    return this.toStringGrid(this.grid, tileToString);
   }
 
   printState() {
@@ -167,9 +142,9 @@ export class Minesweeper {
 
   evaluate(): Evaluation {
     // Is exploded
-    for (const row of this.gridUser) {
+    for (const row of this.grid) {
       for (const tile of row) {
-        if (tile === TileUser.Exploded) {
+        if (tile.user === TileUser.Exploded) {
           return Evaluation.Lose;
         }
       }
@@ -179,13 +154,12 @@ export class Minesweeper {
     let flagsCount = 0;
     for (let y = 0; y < this.size; y++) {
       for (let x = 0; x < this.size; x++) {
-        const tile = this.atUser(x, y);
-        const tileReal = this.atReal(x, y);
-        if (tile === undefined || tileReal === undefined) {
+        const tile = this.at(x, y);
+        if (tile === undefined) {
           continue;
         }
 
-        if (tile === TileUser.Flagged && tileReal === TileReal.Mine) {
+        if (tile.user === TileUser.Flagged && tile.real === TileReal.Mine) {
           flagsCount++;
         }
       }
@@ -199,11 +173,36 @@ export class Minesweeper {
     return new Minesweeper(size, numberOfMines);
   }
 
-  private static createGridReal(
-    size: number,
-    numberOfMines: number,
-  ): TileReal[][] {
-    const grid: GridReal = new Array(size)
+  static getSurroundingMines(grid: TileReal[][], x: number, y: number): number {
+    let surroundingMines = 0;
+    const vectors = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+    ];
+
+    for (const [dx, dy] of vectors) {
+      const x2 = x + dx;
+      const y2 = y + dy;
+      if (x2 < 0 || x2 >= grid.length || y2 < 0 || y2 >= grid[0].length) {
+        continue;
+      }
+
+      const tile = grid[y2][x2];
+      if (tile === TileReal.Mine) {
+        surroundingMines++;
+      }
+    }
+    return surroundingMines;
+  }
+
+  private static createGrid(size: number, numberOfMines: number): Tile[][] {
+    const gridReal: TileReal[][] = new Array(size)
       .fill(0)
       .map((_) => new Array(size).fill(0).map((_) => TileReal.Empty));
 
@@ -212,19 +211,27 @@ export class Minesweeper {
       const x = Math.floor(index % size);
       const y = Math.floor(index / size);
 
-      const val = grid[y][x];
+      const val = gridReal[y][x];
       if (val === TileReal.Mine) continue;
 
-      grid[y][x] = TileReal.Mine;
+      gridReal[y][x] = TileReal.Mine;
       ++currentNumberOfMines;
     }
-    return grid;
-  }
 
-  private static createGridUser(size: number): TileUser[][] {
-    const grid: GridUser = new Array(size)
-      .fill(0)
-      .map((_) => new Array(size).fill(0).map((_) => TileUser.Uncovered));
+    const grid: Tile[][] = [];
+    for (let y = 0; y < size; y++) {
+      grid.push([]);
+      for (let x = 0; x < size; x++) {
+        const tileReal = gridReal[y][x];
+        const surroundingMines = Minesweeper.getSurroundingMines(
+          gridReal,
+          x,
+          y,
+        );
+        const tile = new Tile(tileReal, TileUser.Covered, surroundingMines);
+        grid[y].push(tile);
+      }
+    }
 
     return grid;
   }
