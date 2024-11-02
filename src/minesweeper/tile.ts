@@ -58,9 +58,7 @@ export class Tile {
   }
 
   set(tileUser: TileUser): void {
-    console.log(JSON.stringify(tileUser), tileUser);
     this._user = tileUser;
-    console.log(JSON.stringify(tileUser), tileUser);
   }
 
   isPlayable(): boolean {

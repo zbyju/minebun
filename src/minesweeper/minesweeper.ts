@@ -7,6 +7,8 @@ export enum Evaluation {
   Lose = 2,
 }
 
+type Coords = { x: number; y: number };
+
 export class Minesweeper {
   private size: number;
   private numberOfMines: number;
@@ -40,11 +42,15 @@ export class Minesweeper {
       row.map((tile, x) => [x, y, tile] as const),
     );
     const actions = positions
-      .filter(([_, __, tile]) => tile.user === TileUser.Uncovered)
-      .flatMap(([x, y, _]) => [
-        { x: x, y: y, type: ActionType.Uncover },
-        { x: x, y: y, type: ActionType.Flag },
-      ]);
+      .filter(([_, __, tile]) => tile.isPlayable())
+      .flatMap(([x, y, tile]) =>
+        tile.user === TileUser.Covered
+          ? [
+              { x: x, y: y, type: ActionType.Uncover },
+              { x: x, y: y, type: ActionType.Flag },
+            ]
+          : [{ x: x, y: y, type: ActionType.Flag }],
+      );
     return actions;
   }
 
@@ -61,9 +67,37 @@ export class Minesweeper {
     if (tile.real === TileReal.Mine) {
       this.set(x, y, TileUser.Exploded);
     } else if (tile.real === TileReal.Empty) {
-      this.set(x, y, TileUser.Uncovered);
+      this.uncover(x, y);
     }
     return true;
+  }
+
+  uncover(x: number, y: number) {
+    const queue: Coords[] = [{ x, y }];
+    const visited = new Set<Coords>();
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+      if (visited.has({ x, y })) {
+        continue;
+      }
+      visited.add({ x, y });
+      const tile = this.at(x, y);
+      if (tile === undefined) {
+        continue;
+      }
+
+      tile.set(TileUser.Uncovered);
+
+      if (tile.surroundingMines === 0) {
+        const neighbors = Minesweeper.neighbors(this.grid, x, y);
+        for (const neighbor of neighbors) {
+          if (this.at(neighbor.x, neighbor.y)?.user === TileUser.Covered) {
+            queue.push({ x: neighbor.x, y: neighbor.y });
+          }
+        }
+      }
+    }
   }
 
   makeAction(action: Action): boolean {
@@ -151,6 +185,7 @@ export class Minesweeper {
     }
 
     // Is win
+    let flagsCountCorrect = 0;
     let flagsCount = 0;
     for (let y = 0; y < this.size; y++) {
       for (let x = 0; x < this.size; x++) {
@@ -159,12 +194,19 @@ export class Minesweeper {
           continue;
         }
 
-        if (tile.user === TileUser.Flagged && tile.real === TileReal.Mine) {
+        if (tile.user === TileUser.Flagged) {
           flagsCount++;
+          if (tile.real === TileReal.Mine) {
+            flagsCountCorrect++;
+          }
         }
       }
     }
-    if (flagsCount === this.numberOfMines) return Evaluation.Win;
+    if (
+      flagsCount === this.numberOfMines &&
+      flagsCountCorrect === this.numberOfMines
+    )
+      return Evaluation.Win;
 
     return Evaluation.Continue;
   }
@@ -173,8 +215,7 @@ export class Minesweeper {
     return new Minesweeper(size, numberOfMines);
   }
 
-  static getSurroundingMines(grid: TileReal[][], x: number, y: number): number {
-    let surroundingMines = 0;
+  static neighbors(grid: unknown[][], x: number, y: number): Coords[] {
     const vectors = [
       [-1, 0],
       [1, 0],
@@ -185,20 +226,17 @@ export class Minesweeper {
       [1, -1],
       [1, 1],
     ];
+    return vectors
+      .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+      .filter(
+        ({ x, y }) => x >= 0 && x < grid.length && y >= 0 && y < grid[0].length,
+      );
+  }
 
-    for (const [dx, dy] of vectors) {
-      const x2 = x + dx;
-      const y2 = y + dy;
-      if (x2 < 0 || x2 >= grid.length || y2 < 0 || y2 >= grid[0].length) {
-        continue;
-      }
-
-      const tile = grid[y2][x2];
-      if (tile === TileReal.Mine) {
-        surroundingMines++;
-      }
-    }
-    return surroundingMines;
+  static getSurroundingMines(grid: TileReal[][], x: number, y: number): number {
+    return Minesweeper.neighbors(grid, x, y)
+      .map(({ x, y }) => grid[y][x])
+      .filter((tile) => tile === TileReal.Mine).length;
   }
 
   private static createGrid(size: number, numberOfMines: number): Tile[][] {
