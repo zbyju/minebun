@@ -6,31 +6,23 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "description": "",
-  "exports": {
-    "types": "./dist/index.d.ts",
-    "import": "./dist/index.js",
-    "require": "./dist/index.cjs"
-  },
   "scripts": {
     "build": "bun run build.ts",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "lint": "eslint --fix",
+    "dev": "bun run --hot ./src/index.ts"
   },
-  "files": [
-    "dist"
-  ],
-  "keywords": [
-    "bun"
-  ],
   "license": "MIT",
-  "homepage": "https://github.com/wobsoriano/pkg-name#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/wobsoriano/pkg-name.git"
-  },
-  "bugs": "https://github.com/wobsoriano/pkg-name/issues",
-  "author": "Robert Soriano <sorianorobertc@gmail.com>",
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/bun": "^1.1.10",
     "bun-plugin-dts": "^0.3.0",
-    "@types/bun": "^1.1.10"
+    "globals": "^15.11.0",
+    "typescript-eslint": "^8.12.0"
+  },
+  "dependencies": {
+    "eslint": "^9.13.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-unused-imports": "^4.1.4"
   }
 }
