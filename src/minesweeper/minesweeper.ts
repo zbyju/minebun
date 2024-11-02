@@ -1,7 +1,7 @@
 import { Action, ActionType } from "./action";
 import { PlayableTile, TileReal, TileUser, isPlayableTile } from "./tile";
 
-enum Evaluation {
+export enum Evaluation {
   Continue = 0,
   Win = 1,
   Lose = 2,
@@ -15,14 +15,16 @@ export class Minesweeper {
   private numberOfMines: number;
   private gridReal: GridReal;
   private gridUser: GridUser;
-  private result: Evaluation;
 
   constructor(size: number, numberOfMines: number) {
     this.size = size;
-    this.result = Evaluation.Continue;
     this.numberOfMines = numberOfMines;
     this.gridReal = Minesweeper.createGridReal(size, numberOfMines);
     this.gridUser = Minesweeper.createGridUser(size);
+  }
+
+  get gridSize(): number {
+    return this.size;
   }
 
   atReal(x: number, y: number): TileReal {
@@ -30,9 +32,6 @@ export class Minesweeper {
   }
 
   atUser(x: number, y: number): TileUser {
-    console.log(this.gridUser[y][x]);
-    console.log(this.gridUser[y]);
-    console.log(this.gridUser);
     return this.gridUser[y][x];
   }
 
@@ -40,7 +39,7 @@ export class Minesweeper {
     this.gridUser[y][x] = value;
   }
 
-  actions(): Set<Action> {
+  actions(): Action[] {
     const positions = this.gridUser.flatMap((row, y) =>
       row.map((tile, x) => [x, y, tile]),
     );
@@ -50,7 +49,7 @@ export class Minesweeper {
         { x: x, y: y, type: ActionType.Uncover },
         { x: x, y: y, type: ActionType.Flag },
       ]);
-    return new Set(actions);
+    return actions;
   }
 
   private makeActionFlag(
@@ -83,15 +82,12 @@ export class Minesweeper {
 
   makeAction(action: Action): boolean {
     const tileUser = this.atUser(action.x, action.y);
-    console.log(1);
     if (tileUser === undefined) return false;
 
     // Tile must be uncovered or flagged
-    console.log(2);
     if (!isPlayableTile(tileUser)) return false;
 
     const tileReal = this.atReal(action.x, action.y);
-    console.log(3);
     if (tileReal === undefined) return false;
 
     if (action.type === ActionType.Flag) {
@@ -99,34 +95,6 @@ export class Minesweeper {
     }
 
     return this.makeActionUncover(action.x, action.y, tileUser, tileReal);
-  }
-
-  askForAction(): [number, number, ActionType] {
-    const action = prompt(
-      "Where do you want to sweep? [Format: `x,y` to uncover or `x;y` to flag]",
-    );
-    if (action === null) {
-      console.error("Invalid action (action null)");
-      return this.askForAction();
-    }
-    const regex = /(\d+)[,;](\d+)/;
-    const match = regex.exec(action);
-    if (match === null) {
-      console.error("Invalid action (regex failed)");
-      return this.askForAction();
-    }
-    const x = parseInt(match[1]);
-    const y = parseInt(match[2]);
-    if (x < 0 || x >= this.size || y < 0 || y >= this.size) {
-      console.error("Invalid action (out of bounds)");
-      return this.askForAction();
-    }
-
-    if (action.includes(";")) {
-      return [x, y, ActionType.Flag];
-    } else {
-      return [x, y, ActionType.Uncover];
-    }
   }
 
   toStringGrid<T>(
@@ -197,46 +165,7 @@ export class Minesweeper {
     console.log(this.toStringUser());
   }
 
-  play(): void {
-    console.log("Welcome to MineBun!");
-
-    while (this.result === Evaluation.Continue) {
-      this.printState();
-
-      const [x, y, a] = this.askForAction();
-      const action = { x, y, type: a };
-      console.log(
-        `Making action: ${JSON.stringify(action)} ${action.type === ActionType.Flag ? "flag" : "uncover"}`,
-      );
-      const okAction = this.makeAction(action);
-      if (!okAction) {
-        console.error("Invalid action (action not valid)");
-        continue;
-      }
-      this.evaluate();
-    }
-
-    this.printState();
-    if (this.result === Evaluation.Win) {
-      this.win();
-    }
-    if (this.result === Evaluation.Lose) {
-      this.lose();
-    }
-  }
-
-  lose(): void {
-    console.log("You lose!");
-  }
-
-  win(): void {
-    console.log("You win!");
-  }
-
-  evaluate(): void {
-    this.result = this.calculateEvaluation();
-  }
-  calculateEvaluation(): Evaluation {
+  evaluate(): Evaluation {
     // Is exploded
     for (const row of this.gridUser) {
       for (const tile of row) {
@@ -248,13 +177,15 @@ export class Minesweeper {
 
     // Is win
     let flagsCount = 0;
-    for (const row of this.gridUser) {
-      for (const tile of row) {
-        if (tile === TileUser.Uncovered) {
-          return Evaluation.Continue;
+    for (let y = 0; y < this.size; y++) {
+      for (let x = 0; x < this.size; x++) {
+        const tile = this.atUser(x, y);
+        const tileReal = this.atReal(x, y);
+        if (tile === undefined || tileReal === undefined) {
+          continue;
         }
 
-        if (tile === TileUser.Flagged) {
+        if (tile === TileUser.Flagged && tileReal === TileReal.Mine) {
           flagsCount++;
         }
       }

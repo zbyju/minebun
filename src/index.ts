@@ -1,5 +1,4 @@
-import { Minesweeper } from "./minesweeper/minesweeper";
+import { Manager } from "./minesweeper/manager";
 
-const game = Minesweeper.createGame(2, 3);
-game.play();
-console.log("done");
+const manager = new Manager();
+await manager.start();
